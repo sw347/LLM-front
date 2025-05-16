@@ -1,130 +1,297 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
-import React from 'react';
-import type {PropsWithChildren} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {
-  ScrollView,
-  StatusBar,
+  SafeAreaView,
   StyleSheet,
-  Text,
-  useColorScheme,
   View,
+  TouchableOpacity,
+  Text,
+  Platform,
+  TextInput,
+  ScrollView,
+  Keyboard,
 } from 'react-native';
+import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+import {Colors} from 'react-native/Libraries/NewAppScreen';
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
-
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
+const audioRecorderPlayer = new AudioRecorderPlayer();
 
 function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+  const [inputText, setInputText] = useState<string>('');
+  const [userMessages, setUserMessages] = useState<string[]>([]);
+  const [botMessages, setBotMessages] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+  const handleSend = () => {
+    if (inputText.trim()) {
+      setUserMessages([...userMessages, inputText]);
+      setInputText('');
+
+      setIsLoading(false);
+    }
   };
 
-  /*
-   * To keep the template simple and small we're adding padding to prevent view
-   * from rendering under the System UI.
-   * For bigger apps the recommendation is to use `react-native-safe-area-context`:
-   * https://github.com/AppAndFlow/react-native-safe-area-context
-   *
-   * You can read more about it here:
-   * https://github.com/react-native-community/discussions-and-proposals/discussions/827
-   */
-  const safePadding = '5%';
+  const resetChat = () => {
+    setUserMessages([]);
+    setBotMessages([]);
+    setIsLoading(true);
+  };
+
+  const receviedMessage = () => {
+    setBotMessages([...botMessages, 'AI 답변']);
+  };
+
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => {
+        scrollToBottom();
+      },
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [userMessages, botMessages]);
+
+  const scrollToBottom = () => {
+    scrollViewRef.current?.scrollToEnd({animated: true});
+  };
+
+  const startRecording = async () => {
+    setIsRecording(true);
+    await audioRecorderPlayer.startRecorder();
+  };
+
+  const stopRecording = async () => {
+    if (!isRecording) {
+      console.log('Recording is already stopped.');
+      return;
+    }
+
+    try {
+      const result = await audioRecorderPlayer.stopRecorder();
+      audioRecorderPlayer.removeRecordBackListener();
+      setIsRecording(false);
+      console.log('Recording stopped:', result);
+      sendAudioToServer(result);
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+    }
+  };
+
+  const sendAudioToServer = async (filePath: string) => {
+    const formData = new FormData();
+    formData.append('audio', {
+      uri: filePath,
+      type: 'audio/mp4',
+      name: 'audioRecording.mp4',
+    });
+  };
+
+  // useEffect로 키보드 높이 감지
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      e => {
+        setKeyboardHeight(e.endCoordinates.height);
+      },
+    );
+
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      },
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
 
   return (
-    <View style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        style={backgroundStyle}>
-        <View style={{paddingRight: safePadding}}>
-          <Header/>
+    <SafeAreaView style={styles.safearea}>
+      <View style={styles.container}>
+        <View style={styles.resetBox}>
+          <TouchableOpacity style={styles.button} onPress={resetChat}>
+            <Text>리셋하기</Text>
+          </TouchableOpacity>
         </View>
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-            paddingHorizontal: safePadding,
-            paddingBottom: safePadding,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
+        <ScrollView
+          ref={scrollViewRef}
+          style={{width: '100%'}}
+          contentContainerStyle={styles.chatingBox}
+          keyboardShouldPersistTaps="handled">
+          {isLoading && (
+            <Text style={{textAlign: 'center', marginTop: 200}}>
+              뭐든지 물어보세요! {'\n'}AI가 대답합니다
+            </Text>
+          )}
+          {userMessages.map((msg, index) => (
+            <React.Fragment key={index}>
+              <View style={styles.userChat}>
+                <Text style={styles.messageText}>{msg}</Text>
+              </View>
+              {botMessages[index] && (
+                <View style={styles.botChat}>
+                  <Text style={styles.messageText}>{botMessages[index]}</Text>
+                </View>
+              )}
+            </React.Fragment>
+          ))}
+        </ScrollView>
+        <View style={[styles.inputContainer, {marginBottom: keyboardHeight}]}>
+          <TextInput
+            style={styles.input}
+            placeholder="입력하세요"
+            value={inputText}
+            scrollEnabled={false}
+            onChangeText={text => {
+              setInputText(text);
+              if (text.endsWith('\n')) {
+                handleSend();
+                receviedMessage();
+              }
+            }}
+            onSubmitEditing={() => {
+              handleSend();
+              receviedMessage();
+            }}
+            maxLength={50}
+            returnKeyType="send"
+            blurOnSubmit={false}
+            autoCorrect={false}
+            autoComplete="off"
+            spellCheck={false}
+            keyboardType="default"
+          />
+          <TouchableOpacity
+            style={styles.speackButton}
+            onPress={isRecording ? stopRecording : startRecording}>
+            <Text>음성</Text>
+          </TouchableOpacity>
         </View>
-      </ScrollView>
-    </View>
+
+        {isRecording && (
+          <TouchableOpacity style={styles.overlay} onPress={stopRecording}>
+            <Text style={styles.overlayText}>탭하여 녹음 중지</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+  safearea: {
+    flex: 1,
+    paddingTop: Platform.OS === 'android' ? 40 : 0,
+    paddingBottom: Platform.OS === 'android' ? 48 : 0,
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
+  container: {
+    flex: 1,
+    borderRadius: 0,
+    alignItems: 'center',
+    backgroundColor: '#fff',
   },
-  sectionDescription: {
-    marginTop: 8,
+  resetBox: {
+    padding: 10,
+    width: '100%',
+    alignItems: 'flex-end',
+    borderBottomColor: Colors.darker,
+    borderBottomWidth: 1,
+  },
+  button: {
+    backgroundColor: Colors.lighter,
+    borderStyle: 'solid',
+    borderColor: Colors.darker,
+    borderWidth: 1,
+    borderRadius: 5,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+  },
+  chatingBox: {
+    flexGrow: 1,
+    flex: 1,
+    backgroundColor: '#fff',
+    paddingBottom: 96,
+    alignItems: 'stretch',
+  },
+  inputContainer: {
+    // flex: 1,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderColor: '#000',
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 8,
+    borderColor: '#000',
+    borderWidth: 1,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  speackButton: {
+    borderRadius: '50%',
+    borderColor: '#000',
+    borderWidth: 1,
+    textAlign: 'center',
+    justifyContent: 'center',
+    width: 48,
+    height: 48,
+    marginRight: 8,
+    alignItems: 'center',
+  },
+  userChat: {
+    padding: 10,
+    borderRadius: 8,
+    borderColor: '#000',
+    borderWidth: 1,
+    alignSelf: 'flex-end',
+    marginTop: 10,
+    marginRight: 10,
+    marginLeft: 32,
+  },
+  botChat: {
+    padding: 10,
+    borderRadius: 8,
+    borderColor: '#000',
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    marginLeft: 10,
+    marginRight: 32,
+  },
+  messageText: {fontSize: 16},
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  overlayText: {
+    color: '#fff',
     fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
   },
 });
 
