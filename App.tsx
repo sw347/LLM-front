@@ -1,20 +1,23 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {
-  SafeAreaView,
   StyleSheet,
   View,
   TouchableOpacity,
   Text,
-  Platform,
   TextInput,
+  Platform,
+  KeyboardAvoidingView,
   ScrollView,
   Keyboard,
 } from 'react-native';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
+import axios from 'axios';
+import {SafeAreaView} from 'react-native-safe-area-context';
 
 import {Colors} from 'react-native/Libraries/NewAppScreen';
 
 const audioRecorderPlayer = new AudioRecorderPlayer();
+let ws: WebSocket | null = null;
 
 function App(): React.JSX.Element {
   const [inputText, setInputText] = useState<string>('');
@@ -22,8 +25,7 @@ function App(): React.JSX.Element {
   const [botMessages, setBotMessages] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRecording, setIsRecording] = useState<boolean>(false);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const scrollViewRef = React.useRef<ScrollView>(null);
 
   const handleSend = () => {
     if (inputText.trim()) {
@@ -38,17 +40,41 @@ function App(): React.JSX.Element {
     setUserMessages([]);
     setBotMessages([]);
     setIsLoading(true);
+
+    if (ws!.readyState === WebSocket.OPEN) {
+      ws!.close();
+      console.log('WebSocket 연결이 종료되었습니다.');
+    } else {
+      console.log('WebSocket이 이미 종료되었습니다.');
+    }
   };
 
   const receviedMessage = () => {
-    setBotMessages([...botMessages, 'AI 답변']);
+    ws = new WebSocket('ws://172.30.1.120:3333');
+
+    ws.onopen = () => {
+      ws!.send(`${inputText}`);
+    };
+
+    ws.onmessage = event => {
+      console.log(event.data);
+      setBotMessages([...botMessages, `${event.data}`]);
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket disconnected');
+    };
+
+    ws.onerror = error => {
+      console.error('WebSocket Error:', error);
+    };
   };
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
       'keyboardDidShow',
       () => {
-        scrollToBottom();
+        scrollViewRef.current?.scrollToEnd({animated: true});
       },
     );
 
@@ -56,14 +82,6 @@ function App(): React.JSX.Element {
       keyboardDidShowListener.remove();
     };
   }, []);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [userMessages, botMessages]);
-
-  const scrollToBottom = () => {
-    scrollViewRef.current?.scrollToEnd({animated: true});
-  };
 
   const startRecording = async () => {
     setIsRecording(true);
@@ -94,43 +112,38 @@ function App(): React.JSX.Element {
       type: 'audio/mp4',
       name: 'audioRecording.mp4',
     });
+
+    try {
+      console.log('서버에 보낼 준비');
+      await axios.post('http://localhost:3000/stt', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      console.log('success audio sent to server');
+    } catch (error) {
+      console.log('Error sending audio to server:', error);
+    }
   };
-
-  // useEffect로 키보드 높이 감지
-  useEffect(() => {
-    const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
-      e => {
-        setKeyboardHeight(e.endCoordinates.height);
-      },
-    );
-
-    const keyboardDidHideListener = Keyboard.addListener(
-      'keyboardDidHide',
-      () => {
-        setKeyboardHeight(0);
-      },
-    );
-
-    return () => {
-      keyboardDidShowListener.remove();
-      keyboardDidHideListener.remove();
-    };
-  }, []);
 
   return (
     <SafeAreaView style={styles.safearea}>
-      <View style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}>
         <View style={styles.resetBox}>
           <TouchableOpacity style={styles.button} onPress={resetChat}>
             <Text>리셋하기</Text>
           </TouchableOpacity>
         </View>
         <ScrollView
+          style={styles.chattingBox}
           ref={scrollViewRef}
-          style={{width: '100%'}}
-          contentContainerStyle={styles.chatingBox}
-          keyboardShouldPersistTaps="handled">
+          contentContainerStyle={{flexGrow: 1, paddingBottom: 20}}
+          onContentSizeChange={() => {
+            scrollViewRef.current?.scrollToEnd({animated: true});
+          }}>
           {isLoading && (
             <Text style={{textAlign: 'center', marginTop: 200}}>
               뭐든지 물어보세요! {'\n'}AI가 대답합니다
@@ -149,7 +162,7 @@ function App(): React.JSX.Element {
             </React.Fragment>
           ))}
         </ScrollView>
-        <View style={[styles.inputContainer, {marginBottom: keyboardHeight}]}>
+        <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
             placeholder="입력하세요"
@@ -171,6 +184,7 @@ function App(): React.JSX.Element {
             blurOnSubmit={false}
             autoCorrect={false}
             autoComplete="off"
+            autoCapitalize="none"
             spellCheck={false}
             keyboardType="default"
           />
@@ -186,7 +200,7 @@ function App(): React.JSX.Element {
             <Text style={styles.overlayText}>탭하여 녹음 중지</Text>
           </TouchableOpacity>
         )}
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -194,18 +208,15 @@ function App(): React.JSX.Element {
 const styles = StyleSheet.create({
   safearea: {
     flex: 1,
-    paddingTop: Platform.OS === 'android' ? 40 : 0,
-    paddingBottom: Platform.OS === 'android' ? 48 : 0,
   },
   container: {
     flex: 1,
-    borderRadius: 0,
-    alignItems: 'center',
     backgroundColor: '#fff',
   },
   resetBox: {
     padding: 10,
     width: '100%',
+    backgroundColor: '#fff',
     alignItems: 'flex-end',
     borderBottomColor: Colors.darker,
     borderBottomWidth: 1,
@@ -219,19 +230,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 12,
   },
-  chatingBox: {
-    flexGrow: 1,
+  chattingBox: {
     flex: 1,
     backgroundColor: '#fff',
-    paddingBottom: 96,
-    alignItems: 'stretch',
   },
   inputContainer: {
-    // flex: 1,
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
