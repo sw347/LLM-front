@@ -13,10 +13,10 @@ import {
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import axios from 'axios';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import {WEBSOCKET_URL, API_URL} from '@env';
+import RNFS from 'react-native-fs';
 
-import {Colors} from 'react-native/Libraries/NewAppScreen';
-
-const audioRecorderPlayer = new AudioRecorderPlayer();
+const audioRecorderPlayer: AudioRecorderPlayer = new AudioRecorderPlayer();
 let ws: WebSocket | null = null;
 
 function App(): React.JSX.Element {
@@ -25,7 +25,10 @@ function App(): React.JSX.Element {
   const [botMessages, setBotMessages] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [isFocused, setIsFocused] = useState<boolean>(false);
+  const [isRecieving, setIsReceiving] = useState<boolean>(false);
   const scrollViewRef = React.useRef<ScrollView>(null);
+  const isRecordingRef = React.useRef(isRecording);
 
   const handleSend = () => {
     if (inputText.trim()) {
@@ -41,6 +44,8 @@ function App(): React.JSX.Element {
     setBotMessages([]);
     setIsLoading(true);
 
+    ws = new WebSocket(WEBSOCKET_URL);
+
     if (ws!.readyState === WebSocket.OPEN) {
       ws!.close();
       console.log('WebSocket 연결이 종료되었습니다.');
@@ -50,15 +55,18 @@ function App(): React.JSX.Element {
   };
 
   const receviedMessage = () => {
-    ws = new WebSocket('ws://172.30.1.120:3333');
+    ws = new WebSocket(WEBSOCKET_URL);
 
     ws.onopen = () => {
+      setIsReceiving(true);
       ws!.send(`${inputText}`);
     };
 
     ws.onmessage = event => {
       console.log(event.data);
       setBotMessages([...botMessages, `${event.data}`]);
+
+      setTimeout(() => setIsReceiving(false), 500);
     };
 
     ws.onclose = () => {
@@ -66,7 +74,7 @@ function App(): React.JSX.Element {
     };
 
     ws.onerror = error => {
-      console.error('WebSocket Error:', error);
+      console.error('WebSocket 에러:', error);
     };
   };
 
@@ -83,21 +91,44 @@ function App(): React.JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    isRecordingRef.current = isRecording; // isRecording 상태가 변경될 때마다 ref 업데이트
+  }, [isRecording]); // isRecording이 변경될 때마다 이 effect 실행
+
   const startRecording = async () => {
-    setIsRecording(true);
-    await audioRecorderPlayer.startRecorder();
+    const path = Platform.select({
+      ios: 'recording.m4a',
+      android: `${RNFS.DocumentDirectoryPath}/recording.wav`,
+    });
+
+    try {
+      const result = await audioRecorderPlayer.startRecorder(path);
+      console.log('녹음 시작:', result);
+      setIsRecording(true);
+    } catch (error) {
+      console.log('녹음 시작 실패:', error);
+    }
+
+    setTimeout(() => {
+      if (isRecordingRef.current) {
+        stopRecording();
+      }
+    }, 10000);
   };
 
   const stopRecording = async () => {
-    if (!isRecording) {
+    if (!isRecordingRef.current) {
       console.log('Recording is already stopped.');
       return;
     }
 
+    setIsRecording(false);
+    isRecordingRef.current = false;
+
     try {
       const result = await audioRecorderPlayer.stopRecorder();
+      console.log('결과: ', result);
       audioRecorderPlayer.removeRecordBackListener();
-      setIsRecording(false);
       console.log('Recording stopped:', result);
       sendAudioToServer(result);
     } catch (error) {
@@ -107,20 +138,28 @@ function App(): React.JSX.Element {
 
   const sendAudioToServer = async (filePath: string) => {
     const formData = new FormData();
+    console.log('파일 위치: ', filePath);
     formData.append('audio', {
       uri: filePath,
-      type: 'audio/mp4',
-      name: 'audioRecording.mp4',
+      type: 'audio/m4a',
+      name: 'audioRecording.m4a',
     });
+    setIsReceiving(true);
 
     try {
       console.log('서버에 보낼 준비');
-      await axios.post('http://localhost:3000/stt', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      console.log('success audio sent to server');
+      console.log('formData: ', formData);
+      await axios
+        .post(`${API_URL}/stt`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        })
+        .then(res => {
+          console.log('서버 응답: ', res.data);
+          setInputText(inputText + res.data.text);
+          setTimeout(() => setIsReceiving(false), 500);
+        });
     } catch (error) {
       console.log('Error sending audio to server:', error);
     }
@@ -134,18 +173,18 @@ function App(): React.JSX.Element {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}>
         <View style={styles.resetBox}>
           <TouchableOpacity style={styles.button} onPress={resetChat}>
-            <Text>리셋하기</Text>
+            <Text style={styles.resetTest}>리셋하기</Text>
           </TouchableOpacity>
         </View>
         <ScrollView
           style={styles.chattingBox}
           ref={scrollViewRef}
-          contentContainerStyle={{flexGrow: 1, paddingBottom: 20}}
+          contentContainerStyle={styles.scrollViewContentStyle}
           onContentSizeChange={() => {
             scrollViewRef.current?.scrollToEnd({animated: true});
           }}>
           {isLoading && (
-            <Text style={{textAlign: 'center', marginTop: 200}}>
+            <Text style={styles.loadingText}>
               뭐든지 물어보세요! {'\n'}AI가 대답합니다
             </Text>
           )}
@@ -164,8 +203,9 @@ function App(): React.JSX.Element {
         </ScrollView>
         <View style={styles.inputContainer}>
           <TextInput
-            style={styles.input}
+            style={[styles.input, isFocused && styles.inputFocused]}
             placeholder="입력하세요"
+            placeholderTextColor="#888"
             value={inputText}
             scrollEnabled={false}
             onChangeText={text => {
@@ -179,25 +219,23 @@ function App(): React.JSX.Element {
               handleSend();
               receviedMessage();
             }}
-            maxLength={50}
-            returnKeyType="send"
-            blurOnSubmit={false}
-            autoCorrect={false}
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            keyboardType="default"
+            maxLength={100}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            selectTextOnFocus={!isRecieving}
+            editable={!isRecieving}
           />
           <TouchableOpacity
             style={styles.speackButton}
+            disabled={isRecieving}
             onPress={isRecording ? stopRecording : startRecording}>
-            <Text>음성</Text>
+            <Text style={styles.speakText}>음성</Text>
           </TouchableOpacity>
         </View>
 
         {isRecording && (
           <TouchableOpacity style={styles.overlay} onPress={stopRecording}>
-            <Text style={styles.overlayText}>탭하여 녹음 중지</Text>
+            <Text style={styles.overlayText}>탭하여 녹음 중지(최대 10초)</Text>
           </TouchableOpacity>
         )}
       </KeyboardAvoidingView>
@@ -218,48 +256,57 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: '#fff',
     alignItems: 'flex-end',
-    borderBottomColor: Colors.darker,
+    borderBottomColor: '#6A9097',
     borderBottomWidth: 1,
   },
   button: {
-    backgroundColor: Colors.lighter,
-    borderStyle: 'solid',
-    borderColor: Colors.darker,
-    borderWidth: 1,
+    backgroundColor: '#6A9097',
+    color: '#fff',
     borderRadius: 5,
     paddingVertical: 4,
     paddingHorizontal: 12,
+  },
+  resetTest: {
+    color: '#fff',
   },
   chattingBox: {
     flex: 1,
     backgroundColor: '#fff',
   },
+  loadingText: {textAlign: 'center', marginTop: 200},
+  scrollViewContentStyle: {flexGrow: 1, paddingBottom: 20},
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
     backgroundColor: '#ffffff',
     borderTopWidth: 1,
-    borderColor: '#000',
+    borderColor: '#6A9097',
   },
   input: {
     flex: 1,
     paddingVertical: 8,
-    borderColor: '#000',
+    paddingHorizontal: 8,
+    borderColor: '#6A9097',
     borderWidth: 1,
     borderRadius: 8,
     marginRight: 8,
   },
+  inputFocused: {
+    borderWidth: 2,
+  },
   speackButton: {
     borderRadius: '50%',
-    borderColor: '#000',
-    borderWidth: 1,
+    backgroundColor: '#6A9097',
     textAlign: 'center',
     justifyContent: 'center',
     width: 48,
     height: 48,
     marginRight: 8,
     alignItems: 'center',
+  },
+  speakText: {
+    color: '#fff',
   },
   userChat: {
     padding: 10,
