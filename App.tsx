@@ -16,25 +16,30 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {WEBSOCKET_URL, API_URL} from '@env';
 import RNFS from 'react-native-fs';
 
+// 오디오 녹음 객체 생성
 const audioRecorderPlayer: AudioRecorderPlayer = new AudioRecorderPlayer();
+
+// WebSocket 전역 변수 선언
 let ws: WebSocket | null = null;
 
 function App(): React.JSX.Element {
-  const [inputText, setInputText] = useState<string>('');
-  const [userMessages, setUserMessages] = useState<string[]>([]);
-  const [botMessages, setBotMessages] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isRecording, setIsRecording] = useState<boolean>(false);
-  const [isFocused, setIsFocused] = useState<boolean>(false);
-  const [isRecieving, setIsReceiving] = useState<boolean>(false);
-  const scrollViewRef = React.useRef<ScrollView>(null);
-  const isRecordingRef = React.useRef(isRecording);
+  // 상태 변수를 선언
+  const [inputText, setInputText] = useState<string>(''); // 입력 테스트
+  const [userMessages, setUserMessages] = useState<string[]>([]); // 사용자 메시지 리스트
+  const [botMessages, setBotMessages] = useState<string[]>([]); // AI 응답 메시지 리스트
+  const [isLoading, setIsLoading] = useState<boolean>(true); // 초기 로딩 상태
+  const [isRecording, setIsRecording] = useState<boolean>(false); // 녹음 중인지 여부
+  const [isFocused, setIsFocused] = useState<boolean>(false); // 입력창 포커스 상태
+  const [isRecieving, setIsReceiving] = useState<boolean>(false); // 응답 수신 중 여부
 
+  const scrollViewRef = React.useRef<ScrollView>(null); // ScrollView 참조
+  const isRecordingRef = React.useRef(isRecording); // 녹음 상태 저장 Ref
+
+  // 서버에 전송 시 호출
   const handleSend = () => {
     if (inputText.trim()) {
-      setUserMessages([...userMessages, inputText]);
-      setInputText('');
-
+      setUserMessages([...userMessages, inputText]); // 사용자 메시지 추가
+      setInputText(''); // 입력값 초기화
       setIsLoading(false);
     }
   };
@@ -48,12 +53,10 @@ function App(): React.JSX.Element {
 
     if (ws!.readyState === WebSocket.OPEN) {
       ws!.close();
-      console.log('WebSocket 연결이 종료되었습니다.');
-    } else {
-      console.log('WebSocket이 이미 종료되었습니다.');
     }
   };
 
+  // WebSocket을 통한 메시지 수신 처리
   const receviedMessage = () => {
     ws = new WebSocket(WEBSOCKET_URL);
 
@@ -78,6 +81,7 @@ function App(): React.JSX.Element {
     };
   };
 
+  // 키보드 올라왔을 때 자동으로 스크롤 맨 아래로 이동
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
       'keyboardDidShow',
@@ -91,10 +95,12 @@ function App(): React.JSX.Element {
     };
   }, []);
 
+  // isRecording 상태가 변경될 때마다 ref도 업데이트
   useEffect(() => {
-    isRecordingRef.current = isRecording; // isRecording 상태가 변경될 때마다 ref 업데이트
-  }, [isRecording]); // isRecording이 변경될 때마다 이 effect 실행
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
 
+  // 녹음 시작 함수
   const startRecording = async () => {
     const path = Platform.select({
       ios: 'recording.m4a',
@@ -102,8 +108,7 @@ function App(): React.JSX.Element {
     });
 
     try {
-      const result = await audioRecorderPlayer.startRecorder(path);
-      console.log('녹음 시작:', result);
+      await audioRecorderPlayer.startRecorder(path);
       setIsRecording(true);
     } catch (error) {
       console.log('녹음 시작 실패:', error);
@@ -116,6 +121,7 @@ function App(): React.JSX.Element {
     }, 10000);
   };
 
+  // 녹음 종료 함수
   const stopRecording = async () => {
     if (!isRecordingRef.current) {
       console.log('Recording is already stopped.');
@@ -127,28 +133,25 @@ function App(): React.JSX.Element {
 
     try {
       const result = await audioRecorderPlayer.stopRecorder();
-      console.log('결과: ', result);
       audioRecorderPlayer.removeRecordBackListener();
-      console.log('Recording stopped:', result);
       sendAudioToServer(result);
     } catch (error) {
       console.error('Failed to stop recording:', error);
     }
   };
 
+  // 서버로 오디오 파일 전송 함수
   const sendAudioToServer = async (filePath: string) => {
     const formData = new FormData();
-    console.log('파일 위치: ', filePath);
     formData.append('audio', {
       uri: filePath,
       type: 'audio/m4a',
       name: 'audioRecording.m4a',
     });
+
     setIsReceiving(true);
 
     try {
-      console.log('서버에 보낼 준비');
-      console.log('formData: ', formData);
       await axios
         .post(`${API_URL}/stt`, formData, {
           headers: {
@@ -156,7 +159,6 @@ function App(): React.JSX.Element {
           },
         })
         .then(res => {
-          console.log('서버 응답: ', res.data);
           setInputText(inputText + res.data.text);
           setTimeout(() => setIsReceiving(false), 500);
         });
@@ -171,11 +173,13 @@ function App(): React.JSX.Element {
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}>
+        {/* 상단 리셋 버트 */}
         <View style={styles.resetBox}>
           <TouchableOpacity style={styles.button} onPress={resetChat}>
             <Text style={styles.resetTest}>리셋하기</Text>
           </TouchableOpacity>
         </View>
+        {/* 채팅 메시지 표시 영역 */}
         <ScrollView
           style={styles.chattingBox}
           ref={scrollViewRef}
@@ -201,6 +205,7 @@ function App(): React.JSX.Element {
             </React.Fragment>
           ))}
         </ScrollView>
+        {/* 입력창 및 음성 버튼 */}
         <View style={styles.inputContainer}>
           <TextInput
             style={[styles.input, isFocused && styles.inputFocused]}
@@ -233,6 +238,7 @@ function App(): React.JSX.Element {
           </TouchableOpacity>
         </View>
 
+        {/* 녹음 중일 때 생기는 오버레이*/}
         {isRecording && (
           <TouchableOpacity style={styles.overlay} onPress={stopRecording}>
             <Text style={styles.overlayText}>탭하여 녹음 중지(최대 10초)</Text>
