@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {Platform, ScrollView, Keyboard} from 'react-native';
+import {Platform, ScrollView, Keyboard, Alert} from 'react-native';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import axios from 'axios';
 import {WEBSOCKET_URL, API_URL} from '@env';
@@ -66,6 +66,7 @@ const ChatPage = () => {
 
     ws.onerror = error => {
       console.error('WebSocket 에러:', error);
+      Alert.alert('오류', '서버와의 연결에 문제가 발생했습니다.');
     };
   };
 
@@ -140,6 +141,8 @@ const ChatPage = () => {
     setIsReceiving(true);
 
     try {
+      const saveText = inputText;
+      setInputText('입력 및 음성 녹음이 불가능합니다.');
       await axios
         .post(`${API_URL}/stt`, formData, {
           headers: {
@@ -147,7 +150,8 @@ const ChatPage = () => {
           },
         })
         .then(res => {
-          setInputText(inputText + res.data.text);
+          const text = res.data.text;
+          setInputText(saveText + decodeURI(text));
           setTimeout(() => setIsReceiving(false), 500);
         });
     } catch (error) {

@@ -65,9 +65,9 @@ const styles = StyleSheet.create({
     borderColor: '#6A9097',
   },
   button: {
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: '50%',
+    height: 40,
+    width: 40,
+    borderRadius: '100%',
   },
 });
 
