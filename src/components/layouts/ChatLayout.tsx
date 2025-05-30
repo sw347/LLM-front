@@ -6,9 +6,13 @@ import ChatScrollView from '../organisms/ChatScrollView';
 import Button from '../atoms/Button.tsx';
 import InputWithButton from '../molecules/InputWithButton';
 
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 interface ChatLayoutProps {
-  userMessages: string[];
-  botMessages: string[];
+  messages: ChatMessage[];
   scrollViewRef: React.RefObject<ScrollView | null>;
   isLoading: boolean;
   inputText: string;
@@ -23,8 +27,7 @@ interface ChatLayoutProps {
 }
 
 const ChatLayout = ({
-  userMessages,
-  botMessages,
+  messages,
   scrollViewRef,
   isLoading,
   inputText,
@@ -49,8 +52,9 @@ const ChatLayout = ({
         </View>
         {/* 채팅 메시지 표시 영역 */}
         <ChatScrollView
-          usermessages={userMessages}
-          botmessages={botMessages}
+          messages={messages}
+          // usermessages={userMessages}
+          // botmessages={botMessages}
           scrollViewRef={scrollViewRef}
           isLoading={isLoading}
           onContentSizeChange={() => {

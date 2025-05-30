@@ -2,32 +2,22 @@ import React from 'react';
 import {StyleSheet, Text, View} from 'react-native';
 
 interface ChatMessagesProps {
-  userMessages: string[];
-  botMessages: string[];
+  messages: ChatMessage[];
 }
 
 interface ChatMessage {
-  type: 'user' | 'bot';
-  text: string;
+  role: 'user' | 'assistant';
+  content: string;
 }
 
-const ChatMessages = ({userMessages, botMessages}: ChatMessagesProps) => {
-  const mergedMessages: ChatMessage[] = [];
-
-  userMessages.forEach((userMsg, i) => {
-    mergedMessages.push({type: 'user', text: userMsg});
-    if (botMessages[i]) {
-      mergedMessages.push({type: 'bot', text: botMessages[i]});
-    }
-  });
-
+const ChatMessages = ({messages}: ChatMessagesProps) => {
   return (
     <>
-      {mergedMessages.map((msg, index) => (
+      {messages.map((msg, index) => (
         <View
           key={index}
-          style={msg.type === 'user' ? styles.userChat : styles.botChat}>
-          <Text style={styles.messageText}>{msg.text}</Text>
+          style={msg.role === 'user' ? styles.userChat : styles.botChat}>
+          <Text style={styles.messageText}>{msg.content}</Text>
         </View>
       ))}
     </>

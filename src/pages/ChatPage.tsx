@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {Platform, ScrollView, Keyboard, Alert} from 'react-native';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import axios from 'axios';
@@ -6,17 +6,19 @@ import {WEBSOCKET_URL, API_URL} from '@env';
 import RNFS from 'react-native-fs';
 import ChatLayout from '../components/layouts/ChatLayout.tsx';
 
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 // 오디오 녹음 객체 생성
 const audioRecorderPlayer: AudioRecorderPlayer = new AudioRecorderPlayer();
-
-// WebSocket 전역 변수 선언
-let ws: WebSocket | null = null;
 
 const ChatPage = () => {
   // 상태 변수를 선언
   const [inputText, setInputText] = useState<string>(''); // 입력 테스트
-  const [userMessages, setUserMessages] = useState<string[]>([]); // 사용자 메시지 리스트
-  const [botMessages, setBotMessages] = useState<string[]>([]); // AI 응답 메시지 리스트
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+
   const [isLoading, setIsLoading] = useState<boolean>(true); // 초기 로딩 상태
   const [isRecording, setIsRecording] = useState<boolean>(false); // 녹음 중인지 여부
   const [isRecieving, setIsReceiving] = useState<boolean>(false); // 응답 수신 중 여부
@@ -24,47 +26,120 @@ const ChatPage = () => {
   const scrollViewRef = React.useRef<ScrollView>(null); // ScrollView 참조
   const isRecordingRef = React.useRef(isRecording); // 녹음 상태 저장 Ref
 
-  // 서버에 전송 시 호출
-  const handleSend = () => {
-    if (inputText.trim()) {
-      setUserMessages([...userMessages, inputText]); // 사용자 메시지 추가
-      setInputText(''); // 입력값 초기화
-      setIsLoading(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const messageQueueRef = useRef<
+    {
+      userMessageContent: string;
+      conversationHistory: ChatMessage[];
+    }[]
+  >([]);
+
+  const resetChat = () => {
+    setMessages([]);
+    setIsLoading(true);
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.close();
     }
   };
 
-  const resetChat = () => {
-    setUserMessages([]);
-    setBotMessages([]);
-    setIsLoading(true);
+  const sendMessage = (
+    userMessageContent: string,
+    conversationHistory: ChatMessage[],
+  ) => {
+    const payload = {
+      type: 'chat_request',
+      userMessages: userMessageContent,
+      messages: conversationHistory,
+    };
+    console.log('Sending payload:', payload);
 
-    ws = new WebSocket(WEBSOCKET_URL);
+    // WebSocket이 연결되어 있으면 즉시 전송
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(payload));
+      setIsReceiving(true);
+    } else {
+      // 연결되지 않았으면 큐에 저장하고 연결 시도
+      messageQueueRef.current.push({userMessageContent, conversationHistory});
+      // WebSocket 재연결 로직이 있다면 여기서 호출
+      receviedMessage();
+    }
+  };
 
-    if (ws!.readyState === WebSocket.OPEN) {
-      ws!.close();
+  // 서버에 전송 시 호출
+  const handleSend = () => {
+    const text = inputText.trim();
+    if (!text) {
+      return;
+    }
+
+    const userMsg: ChatMessage = {role: 'user', content: text};
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
+
+    setInputText(''); // 입력값 초기화
+    setIsLoading(false);
+
+    // 메시지 전송 (WebSocket으로)
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      // WebSocket이 열려있으면 즉시 전송
+      sendMessage(text, updatedMessages);
+    } else {
+      // WebSocket이 닫혀있으면 큐에 추가하고 연결 시도
+      messageQueueRef.current.push({
+        userMessageContent: text,
+        conversationHistory: updatedMessages,
+      });
+      receviedMessage(); // WebSocket 연결 시도
     }
   };
 
   // WebSocket을 통한 메시지 수신 처리
   const receviedMessage = () => {
-    ws = new WebSocket(WEBSOCKET_URL);
+    if (
+      wsRef.current &&
+      (wsRef.current.readyState === WebSocket.OPEN ||
+        wsRef.current?.readyState === WebSocket.CONNECTING)
+    ) {
+      console.log('웹소켓이 이미 연결되어 있습니다.');
+      return;
+    }
 
-    ws.onopen = () => {
-      setIsReceiving(true);
-      ws!.send(`${inputText}`);
+    wsRef.current = new WebSocket(WEBSOCKET_URL);
+
+    wsRef.current.onopen = () => {
+      while (messageQueueRef.current.length > 0) {
+        const {userMessageContent, conversationHistory} =
+          messageQueueRef.current.shift()!;
+
+        const payload = {
+          type: 'chat_request',
+          userMessages: userMessageContent,
+          messages: conversationHistory,
+        };
+
+        console.log('Sending queued payload:', payload);
+        wsRef.current?.send(JSON.stringify(payload));
+        setIsReceiving(true);
+      }
     };
 
-    ws.onmessage = event => {
-      setBotMessages([...botMessages, `${event.data}`]);
+    wsRef.current.onmessage = event => {
+      try {
+        const botMsg: ChatMessage = {role: 'assistant', content: event.data};
+        setMessages(prev => [...prev, botMsg]);
 
-      setTimeout(() => setIsReceiving(false), 500);
+        setTimeout(() => setIsReceiving(false), 500);
+      } catch (error) {
+        console.error('WebSocket에서 발생한: ', error);
+      }
     };
 
-    ws.onclose = () => {
+    wsRef.current.onclose = () => {
       console.log('WebSocket disconnected');
     };
 
-    ws.onerror = error => {
+    wsRef.current.onerror = error => {
       console.error('WebSocket 에러:', error);
       Alert.alert('오류', '서버와의 연결에 문제가 발생했습니다.');
     };
@@ -161,8 +236,9 @@ const ChatPage = () => {
 
   return (
     <ChatLayout
-      userMessages={userMessages}
-      botMessages={botMessages}
+      // userMessages={userMessages}
+      // botMessages={botMessages}
+      messages={messages}
       scrollViewRef={scrollViewRef}
       isLoading={isLoading}
       inputText={inputText}

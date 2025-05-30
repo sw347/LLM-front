@@ -2,17 +2,20 @@ import React from 'react';
 import {ScrollView, StyleSheet, Text} from 'react-native';
 import ChatMessages from '../molecules/ChatMessages';
 
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 interface ChatScrollViewProps {
-  usermessages: string[];
-  botmessages: string[];
+  messages: ChatMessage[];
   isLoading: boolean;
   scrollViewRef: React.RefObject<ScrollView | null>;
   onContentSizeChange: () => void;
 }
 
 const ChatScrollView = ({
-  usermessages,
-  botmessages,
+  messages,
   isLoading,
   scrollViewRef,
   onContentSizeChange,
@@ -28,7 +31,7 @@ const ChatScrollView = ({
           뭐든지 물어보세요! {'\n'}AI가 대답합니다
         </Text>
       )}
-      <ChatMessages userMessages={usermessages} botMessages={botmessages} />
+      <ChatMessages messages={messages} />
     </ScrollView>
   );
 };
