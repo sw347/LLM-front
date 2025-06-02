@@ -1,13 +1,9 @@
 import React from 'react';
 import {StyleSheet, Text, View} from 'react-native';
+import {ChatMessageType} from '../../types/ChatMessageType';
 
 interface ChatMessagesProps {
-  messages: ChatMessage[];
-}
-
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
+  messages: ChatMessageType[];
 }
 
 const ChatMessages = ({messages}: ChatMessagesProps) => {

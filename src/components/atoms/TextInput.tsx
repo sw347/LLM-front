@@ -1,51 +1,46 @@
 import React from 'react';
-import {TextInput, ViewStyle} from 'react-native';
+import {StyleSheet, TextInput} from 'react-native';
+import {useChatContext} from '../../context/ChatContext';
 
-interface TextInputProps {
-  style?: ViewStyle;
-  placeholder?: string;
-  placeholderTextColor?: string;
-  value?: string;
-  scrollEnabled?: boolean;
-  onChangeText?: (text: string) => void;
-  onSubmitEditing?: () => void;
-  maxLength?: number;
-  onFocus?: () => void;
-  onBlur?: () => void;
-  selectTextOnFocus?: boolean;
-  editable?: boolean;
-}
+const TextInputBox = () => {
+  const {inputText, handleSend, setInputText, receviedMessage, isReceiving} =
+    useChatContext();
 
-const TextInputBox = ({
-  style,
-  placeholder,
-  placeholderTextColor,
-  value,
-  scrollEnabled,
-  onChangeText,
-  onSubmitEditing,
-  maxLength,
-  onFocus,
-  onBlur,
-  selectTextOnFocus,
-  editable,
-}: TextInputProps) => {
+  const handleChange = (text: string) => {
+    setInputText(text);
+    if (text.endsWith('\n')) {
+      handleSend();
+      receviedMessage();
+    }
+  };
+
+  const handleSubmit = () => {
+    handleSend();
+    receviedMessage();
+  };
+
   return (
     <TextInput
-      style={style}
-      placeholder={placeholder}
-      placeholderTextColor={placeholderTextColor}
-      value={value}
-      scrollEnabled={scrollEnabled}
-      onChangeText={onChangeText}
-      onSubmitEditing={onSubmitEditing}
-      maxLength={maxLength}
-      onBlur={onBlur}
-      onFocus={onFocus}
-      selectTextOnFocus={selectTextOnFocus}
-      editable={editable}
+      style={styles.input}
+      placeholder="메시지를 입력해주세요"
+      placeholderTextColor="#888"
+      value={inputText}
+      onChangeText={handleChange}
+      onSubmitEditing={handleSubmit}
+      maxLength={100}
+      editable={!isReceiving}
     />
   );
 };
+
+const styles = StyleSheet.create({
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderColor: '#6A9097',
+  },
+});
 
 export default TextInputBox;

@@ -1,31 +1,18 @@
 import React from 'react';
 import {ScrollView, StyleSheet, Text} from 'react-native';
 import ChatMessages from '../molecules/ChatMessages';
+import {useChatContext} from '../../context/ChatContext';
 
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-interface ChatScrollViewProps {
-  messages: ChatMessage[];
-  isLoading: boolean;
-  scrollViewRef: React.RefObject<ScrollView | null>;
-  onContentSizeChange: () => void;
-}
-
-const ChatScrollView = ({
-  messages,
-  isLoading,
-  scrollViewRef,
-  onContentSizeChange,
-}: ChatScrollViewProps) => {
+const ChatScrollView = () => {
+  const {messages, isLoading, scrollViewRef} = useChatContext();
   return (
     <ScrollView
       style={styles.chattingBox}
       ref={scrollViewRef}
       contentContainerStyle={styles.scrollViewContentStyle}
-      onContentSizeChange={onContentSizeChange}>
+      onContentSizeChange={() => {
+        scrollViewRef.current?.scrollToEnd({animated: true});
+      }}>
       {isLoading && (
         <Text style={styles.loadingText}>
           뭐든지 물어보세요! {'\n'}AI가 대답합니다
