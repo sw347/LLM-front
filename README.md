@@ -34,9 +34,11 @@ Atomic Design 패턴을 적용하여 컴포넌트를 세분화하고, 재사용�
   │ ├── atoms/ - 기본 단위 UI 컴포넌트<br/>
   │ ├── molecules/ - 두 개 이상의 atom 조합<br/>
   │ ├── organisms/ - 완전한 기능 단위 구성<br/>
-  │ └── layouts/ - 전체 페이지 구조 (e.g. ChatLayout.tsx)<br/>
+  │ └── template/ - 전체 페이지 구조<br/>
   ├── pages/ - 비즈니스 로직을 포함하는 페이지 컴포넌트<br/>
-  └── api/ - Axios 기반 API 통신 로직
+  └── constants/ - 앱 전역에서 사용하는 상수 값이나 설정 값들을 모아 관리<br/>
+  └── types/ - 자주 사용하는 type을 분리하여 저장<br/>
+  └── context/ - 앱의 상태/로직을 관리
 
 ## 기능 흐름도
 
