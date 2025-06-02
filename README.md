@@ -28,7 +28,7 @@ Atomic Design 패턴을 적용하여 컴포넌트를 세분화하고, 재사용�
 
 ## 프로젝트 구조
 
-- App.tsx - 전체 앱의 뷰, 음성녹음, WebSocket 통신, 메시지 렌더링 로직 포함
+- App.tsx - 전역 상태 관리 Provider 등록 등을 초기화하고 렌더링
 - src/<br/>
   ├── components/<br/>
   │ ├── atoms/ - 기본 단위 UI 컴포넌트<br/>
